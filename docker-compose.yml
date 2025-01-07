@@ -1,0 +1,61 @@
+version: '3.8'
+
+networks:
+  sactudonet:
+    external: true
+
+services:
+  frontend:
+    image: node:18-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    volumes:
+      - .:/app
+    environment:
+      - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+    networks:
+      - sactudonet
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.diaristas-frontend.rule=Host(`pix.sactudo.com.br`)"
+      - "traefik.http.services.diaristas-frontend.loadbalancer.server.port=5173"
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sactudonet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  supabase:
+    image: supabase/supabase-docker:latest
+    depends_on:
+      - db
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-token-with-at-least-32-characters}
+      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME:-admin}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-admin}
+      STUDIO_PORT: 3000
+      API_PORT: 8000
+    networks:
+      - sactudonet
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.supabase-studio.rule=Host(`studio.pix.sactudo.com.br`)"
+      - "traefik.http.services.supabase-studio.loadbalancer.server.port=3000"
+      - "traefik.http.routers.supabase-api.rule=Host(`api.pix.sactudo.com.br`)"
+      - "traefik.http.services.supabase-api.loadbalancer.server.port=8000"
+
+volumes:
+  postgres_data:
